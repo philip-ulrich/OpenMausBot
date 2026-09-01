@@ -63,7 +63,7 @@ beforeAll(async () => {
   sidecar = createServer(
     createProxyHandler({
       harnessPort,
-      authenticate: (t) => (t === TOKEN ? { cloudDesktopAccess } : null),
+      authenticate: (t) => (t === TOKEN ? { id: "device-1", cloudDesktopAccess } : null),
       redeem: () => ({ error: "not used here" }),
       serverName: () => "Test computer",
       endpoints: () => endpointCandidates,
@@ -112,6 +112,23 @@ describe("preparing a harness response for a device", () => {
     expect(status).toBe(200);
     expect(JSON.parse(text).joinUrl).toBe("https://desktop.example/session/fresh");
     expect(companionMarker).toBe("1");
+  });
+
+  it("turns a host-loopback VPS viewer into a device-scoped companion path", async () => {
+    respond = (res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        joinUrl: "http://127.0.0.1:45678/vnc.html#autoconnect=true&password=viewer-secret",
+        state: "running",
+      }));
+    };
+    const { status, text } = await device("/api/bots/b1/computer/join", "POST");
+    expect(status).toBe(200);
+    const joinUrl = String(JSON.parse(text).joinUrl);
+    expect(joinUrl).toMatch(/^\/vps-viewer\/[A-Za-z0-9_-]{32}\/vnc\.html#/);
+    expect(joinUrl).toContain("password=viewer-secret");
+    expect(joinUrl).toContain("path=vps-viewer%2F");
+    expect(joinUrl).not.toContain("127.0.0.1:45678");
   });
 
   it("never forwards a body it could not scrub", async () => {
