@@ -46,6 +46,13 @@ import {
   withoutManagedCompanionTunnelAccess,
 } from "./managed-companion-tunnel.mjs";
 import { createSecureCredentialState } from "./secure-credential-state.mjs";
+import {
+  desktopCompanionAccess,
+  pairDesktopCompanion,
+  startDesktopCompanionRelay,
+  withDesktopCompanionAccess,
+  withoutDesktopCompanionAccess,
+} from "./desktop-companion-client.mjs";
 import { isKnownSkin } from "./skin-overlay.cjs";
 import { readSecureCredentials } from "./secure-credentials.mjs";
 import { createControlPlaneClient } from "./control-plane-client.mjs";
@@ -236,6 +243,8 @@ let serverProc = null;
 let serverReady = true;
 let secureCredentials = {};
 let secureCredentialState = null;
+let desktopRemoteAccess = null;
+let desktopCompanionRelay = null;
 
 const CREDENTIALS_FILE = path.join(app.getPath("userData"), "credentials.bin");
 
@@ -1010,7 +1019,7 @@ const displayMediaGuard = createDisplayMediaGuard();
 let displayMediaRequestCount = 0;
 
 function rendererOrigin() {
-  return new URL(app.isPackaged ? `http://127.0.0.1:${SERVER_PORT}` : DEV_URL).origin;
+  return new URL(app.isPackaged || desktopRemoteAccess ? `http://127.0.0.1:${SERVER_PORT}` : DEV_URL).origin;
 }
 
 function respondToDisplayMediaRequest(callback, response) {
@@ -1547,7 +1556,7 @@ function createWindow() {
     },
   });
   mainWindow = win;
-  void startBrowserSurface(win);
+  if (!desktopRemoteAccess) void startBrowserSurface(win);
   if (waitsForSkinSync) {
     // A broken renderer or preload must not strand the app as an invisible
     // process. Normal startup shows from desktop:skin almost immediately;
@@ -2004,6 +2013,53 @@ ipcMain.handle("companion:revoke", localOnly("companion:revoke", (_event, device
   companionRevoke(deviceId).then(() => desktopCompanionState()),
 ));
 
+function publicDesktopRemoteState() {
+  return desktopRemoteAccess
+    ? {
+        active: true,
+        endpoint: desktopRemoteAccess.endpoint,
+        serverName: desktopRemoteAccess.serverName,
+        deviceId: desktopRemoteAccess.deviceId,
+      }
+    : { active: false };
+}
+
+function requireMainWindowSender(event) {
+  const sender = BrowserWindow.fromWebContents(event.sender);
+  if (!sender || sender !== mainWindow || sender.isDestroyed()) {
+    throw new Error("The desktop client window is unavailable");
+  }
+}
+
+function relaunchAfterDesktopRemoteChange() {
+  const timer = setTimeout(() => {
+    app.relaunch();
+    app.exit(0);
+  }, 250);
+  timer.unref?.();
+}
+
+ipcMain.handle("desktop-remote:state", () => publicDesktopRemoteState());
+ipcMain.handle("desktop-remote:pair", async (event, endpoint, code) => {
+  requireMainWindowSender(event);
+  const access = await pairDesktopCompanion({
+    endpoint,
+    code,
+    deviceName: `${installationDisplayName()} desktop`,
+  });
+  await updateSecureCredentialDocument((credentials) => withDesktopCompanionAccess(credentials, access));
+  desktopRemoteAccess = access;
+  relaunchAfterDesktopRemoteChange();
+  return publicDesktopRemoteState();
+});
+ipcMain.handle("desktop-remote:disconnect", async (event) => {
+  requireMainWindowSender(event);
+  await updateSecureCredentialDocument(withoutDesktopCompanionAccess);
+  desktopRemoteAccess = null;
+  relaunchAfterDesktopRemoteChange();
+  return { active: false };
+});
+
 // Auth and connector credentials never cross this boundary. Every handler
 // returns the same deliberately tiny, secret-free public account state.
 ipcMain.handle("companion-account:state", localOnly("companion-account:state", () => ensureCompanionAccountService().state()));
@@ -2144,7 +2200,8 @@ app.whenReady().then(async () => {
     writable: !credentialStoreUnavailable,
   });
   secureCredentials = secureCredentialState.read();
-  const hostedAccount = ensureCompanionAccountService();
+  desktopRemoteAccess = desktopCompanionAccess(secureCredentials);
+  const hostedAccount = desktopRemoteAccess ? null : ensureCompanionAccountService();
   // Display capture remains user-initiated. The renderer first sends a
   // short-lived one-shot intent, then calls getDisplayMedia in the same click.
   // The handler binds that request to the same frame/origin, rejects audio,
@@ -2203,13 +2260,27 @@ app.whenReady().then(async () => {
   // connection descriptor on first render. Never blocks window creation on
   // failure — computer use degrades to "unavailable", the rest still works.
   cuaReady =
-    process.platform === "darwin" || process.platform === "linux"
+    !desktopRemoteAccess && (process.platform === "darwin" || process.platform === "linux")
       ? startCua().catch((e) => {
           console.error("[cua] start failed:", e);
           return { mode: "unavailable", reason: String(e) };
         })
       : Promise.resolve({ mode: "unavailable", reason: "unsupported-platform" });
-  if (app.isPackaged) {
+  if (desktopRemoteAccess) {
+    try {
+      desktopCompanionRelay = await startDesktopCompanionRelay({
+        access: desktopRemoteAccess,
+        staticDir: app.isPackaged
+          ? path.join(process.resourcesPath, "ui")
+          : path.join(app.getAppPath(), "dist"),
+      });
+      SERVER_PORT = desktopCompanionRelay.port;
+      serverReady = true;
+    } catch (error) {
+      serverReady = false;
+      slog(`desktop companion relay failed: ${error?.message ?? error}`);
+    }
+  } else if (app.isPackaged) {
     // The embedded harness receives this descriptor only over its private
     // utility-process port. Never leave the master token in userData where a
     // shell-capable bot running as the same OS user could read it.
@@ -2224,7 +2295,7 @@ app.whenReady().then(async () => {
   // exact options the IPC handler uses. A failure surfaces in companionState
   // (the panel shows the error) rather than retrying; and it never delays
   // the window.
-  if (serverReady && companionEnabledAtRest()) {
+  if (!desktopRemoteAccess && serverReady && companionEnabledAtRest()) {
     void startDesktopCompanion({ waitForHosted: false, remember: false });
   }
   environmentsState = readEnvironments();
@@ -2232,7 +2303,7 @@ app.whenReady().then(async () => {
   // Reconcile incomplete setup and resume interrupted sign-out only after the
   // local app is usable. This background network work never gates LAN pairing
   // or the first window.
-  void hostedAccount.restore().catch(() => {});
+  if (hostedAccount) void hostedAccount.restore().catch(() => {});
   // Registration is optional network work. Start it only after the local
   // server and first window are usable, then update the server child over its
   // private parent port so Connected Apps becomes available without restart.
@@ -2242,7 +2313,7 @@ app.whenReady().then(async () => {
   if (credentialStoreUnavailable) {
     slog("skipping connected-apps registration: the credential store was unreadable this launch");
   }
-  if (app.isPackaged && composioBrokerUrl() && !credentialStoreUnavailable) {
+  if (!desktopRemoteAccess && app.isPackaged && composioBrokerUrl() && !credentialStoreUnavailable) {
     void updateSecureCredentialDocument(async (credentials) => {
       await ensureManagedComposioCredentials({
         brokerUrl: composioBrokerUrl(),
@@ -2298,6 +2369,9 @@ app.on("before-quit", (e) => {
   } catch {}
   // Release the sleep blocker synchronously; child shutdown is awaited below.
   syncCompanionKeepAwake(false, false);
+  try {
+    desktopCompanionRelay?.server.close();
+  } catch {}
   // a live dictation session runs its own helper child that holds the mic —
   // stop it here so quitting never orphans a recording process
   if (nativeActions.appleSpeech) stopSpeech();
