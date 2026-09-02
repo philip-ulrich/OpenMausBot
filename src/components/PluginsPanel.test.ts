@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  connectedAppsMayDisconnect,
   connectedInventoryCopy,
   connectorActionLabel,
   disconnectAccountConfirmation,
@@ -10,6 +11,13 @@ import {
   onlyLatestConnectorResponses,
   type ConnectorStatus,
 } from "./PluginsPanel";
+
+describe("connected-app remote permissions", () => {
+  it("allows pairing and status remotely but keeps revocation on the host", () => {
+    expect(connectedAppsMayDisconnect(false)).toBe(true);
+    expect(connectedAppsMayDisconnect(true)).toBe(false);
+  });
+});
 
 describe("connected-app status races", () => {
   it("does not let an older not_connected response erase a newer OAuth attempt", async () => {
