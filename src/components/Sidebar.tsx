@@ -211,6 +211,7 @@ function RoomContextMenu({
   onMoveToSection: (groupId: string) => void;
 }) {
   const { state, dispatch } = useStore();
+  const remoteClient = window.ogb?.remoteClient?.active === true;
   const group = state.groups.find((g) => g.id === menu.groupId);
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(group?.name ?? "");
@@ -245,7 +246,7 @@ function RoomContextMenu({
       style={{ top, left }}
       className="fixed z-40 w-[228px] overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
     >
-      {renaming ? (
+      {!remoteClient && (renaming ? (
         <div className="flex items-center gap-1 px-2 py-1">
           <input
             autoFocus
@@ -296,8 +297,8 @@ function RoomContextMenu({
           <Pencil size={16} className="text-ink-secondary" />
           {isBotChat ? "Rename chat" : "Rename Channel"}
         </button>
-      )}
-      {!isBotChat && (
+      ))}
+      {!remoteClient && !isBotChat && (
         <button
           onClick={() => {
             onClose();
@@ -319,7 +320,7 @@ function RoomContextMenu({
         <ClipboardCopy size={16} className="text-ink-secondary" />
         Copy conversation ID
       </button>
-      <button
+      {!remoteClient && <button
         onClick={() => {
           dispatch({ type: "deleteGroup", groupId: group.id });
           onClose();
@@ -328,7 +329,7 @@ function RoomContextMenu({
       >
         <Trash2 size={16} />
         {isBotChat ? "Delete chat" : "Delete Channel"}
-      </button>
+      </button>}
     </div>,
     document.body,
   );
@@ -543,6 +544,7 @@ function BotContextMenu({
   onMoveToSection: (botId: string) => void;
 }) {
   const { state, dispatch } = useStore();
+  const remoteClient = window.ogb?.remoteClient?.active === true;
   const bot = state.bots.find((b) => b.id === menu.botId);
 
   useEffect(() => {
@@ -606,7 +608,19 @@ function BotContextMenu({
       style={{ top, left }}
       className="fixed z-40 w-[228px] overflow-hidden rounded-xl border border-hairline/50 bg-card py-1.5 shadow-2xl shadow-black/60"
     >
-      {[
+      {remoteClient ? [
+        item(<FolderPlus size={16} className="text-ink-secondary" />, "Move to section", () => {
+          onClose();
+          onMoveToSection(bot.id);
+        }),
+        item(<Pencil size={16} className="text-ink-secondary" />, "Edit Profile", () => {
+          dispatch({ type: "select", id: bot.id });
+          dispatch({ type: "toggleSettings", open: true });
+        }),
+        item(<ClipboardCopy size={16} className="text-ink-secondary" />, "Copy conversation ID", () => {
+          void navigator.clipboard?.writeText(bot.threadId);
+        }),
+      ] : [
         item(
           bot.pinned ? <PinOff size={16} className="text-ink-secondary" /> : <Pin size={16} className="text-ink-secondary" />,
           bot.pinned ? "Unpin" : "Pin",
@@ -672,6 +686,7 @@ function BotListItem({
   archiveDisabled: boolean;
 }) {
   const { state, dispatch } = useStore();
+  const remoteClient = window.ogb?.remoteClient?.active === true;
   const [renaming, setRenaming] = useState(false);
   const selected = state.activeView === "chat" && state.selectedId === bot.id;
   const mascotMotion = selected && state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
@@ -719,7 +734,15 @@ function BotListItem({
             <RenameTitle
               key={iconOnly ? "icons" : "expanded"}
               value={bot.name}
-              onCommit={(name) => dispatch({ type: "updateBot", botId: bot.id, patch: { name } })}
+              onCommit={(name) => {
+                if (remoteClient) {
+                  void api(`/api/bots/${bot.id}/profile`, { method: "PATCH", body: JSON.stringify({ name }) })
+                    .then(({ bot: updated }) => dispatch({ type: "botPatched", bot: updated }))
+                    .catch(() => {});
+                } else {
+                  dispatch({ type: "updateBot", botId: bot.id, patch: { name } });
+                }
+              }}
               onEditingChange={setRenaming}
               className="truncate"
               inputClassName="w-full rounded bg-inset px-1 py-0.5 text-[15px] font-semibold"
@@ -784,7 +807,7 @@ function BotListItem({
       {iconOnly && bot.unread && (
         <span className="pointer-events-none absolute bottom-1.5 right-1.5 size-2 rounded-full border border-panel bg-accent" />
       )}
-      {!iconOnly && <button
+      {!remoteClient && !iconOnly && <button
         type="button"
         disabled={archiveDisabled}
         onClick={() => onArchive(bot)}
@@ -1018,11 +1041,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   }, [densityOpen]);
 
   useEffect(() => {
+    if (remoteClient) return;
     return window.ogb?.onPackageInstall?.((url) => {
       setTeamInstallUrl(url);
       setTeamLibraryOpen(true);
     });
-  }, []);
+  }, [remoteClient]);
 
   useEffect(() => {
     if (!teamFeedback) return;
@@ -1359,9 +1383,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <button
             ref={importReturnRef}
             onClick={() => setPlusOpen((o) => !o)}
-            aria-label="New or share"
+            aria-label={remoteClient ? "New" : "New or share"}
             className="flex size-10 items-center justify-center rounded-md text-ink-secondary hover:bg-raised hover:text-ink"
-            title="New or share"
+            title={remoteClient ? "New" : "New or share"}
           >
             <Plus size={20} strokeWidth={2} />
           </button>
@@ -1393,6 +1417,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   <Users size={16} className="text-ink-secondary" />
                   New Channel
                 </button>
+                {!remoteClient && <>
                 <button
                   onClick={() => {
                     setPlusOpen(false);
@@ -1427,6 +1452,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     <span className="text-[11.5px] text-ink-secondary">{archivedBots.length}</span>
                   </button>
                 )}
+                </>}
               </div>
             </>
           )}
@@ -1714,7 +1740,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           current={state.bots.find((b) => b.id === sectionPicker.botId)?.section}
           anchor={sectionPicker}
           onClose={() => setSectionPicker(null)}
-          onAssign={(section) => dispatch({ type: "updateBot", botId: sectionPicker.botId, patch: { section } })}
+          onAssign={(section) => {
+            if (!remoteClient) {
+              dispatch({ type: "updateBot", botId: sectionPicker.botId, patch: { section } });
+              return;
+            }
+            void api("/api/sidebar-sections", {
+              method: "POST",
+              body: JSON.stringify({ name: section, botIds: [sectionPicker.botId] }),
+            })
+              .then(({ bots }) => bots.forEach((bot: Bot) => dispatch({ type: "botPatched", bot })))
+              .catch((cause) => dispatch({ type: "error", message: cause instanceof Error ? cause.message : String(cause) }));
+          }}
         />
       )}
       {roomMenu && (
@@ -1736,14 +1773,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         />
       )}
       {newRoom && <NewRoomPanel onClose={() => setNewRoom(false)} />}
-      {archivedBotsOpen && (
+      {!remoteClient && archivedBotsOpen && (
         <ArchivedBotsPanel
           bots={archivedBots}
           onClose={() => setArchivedBotsOpen(false)}
           onRestored={(message) => setTeamFeedback({ error: false, text: message })}
         />
       )}
-      {teamLibraryOpen && (
+      {!remoteClient && teamLibraryOpen && (
         <TeamLibraryPanel
           returnFocusRef={importReturnRef}
           initialUrl={teamInstallUrl ?? undefined}
