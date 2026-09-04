@@ -21,6 +21,7 @@ import {
   vpsComputerScreenshot,
   vpsComputerStatus,
   vpsComputerMcp,
+  vpsWorkspaceMcp,
   vpsContainerMcpArgs,
   vpsContainerName,
   vpsContainerRunArgs,
@@ -461,6 +462,15 @@ describe("VPS computer", () => {
       "--socket",
       "/run/user/1000/openmausbot-cua.sock",
     ]);
+  });
+
+  it("pairs the desktop with a per-container workspace MCP", () => {
+    const connection = vpsWorkspaceMcp(CONFIG, BOT_ID);
+    expect(connection.command).toBe(process.execPath);
+    expect(connection.args[0]).toContain("vps-workspace-mcp");
+    expect(connection.args.slice(-2)).toEqual(["production-vps", vpsContainerName(BOT_ID)]);
+    expect(connection.env).toEqual({ ELECTRON_RUN_AS_NODE: "1" });
+    expect(vpsWorkspaceMcp(CONFIG, BOT_ID, CONTAINER_ID).args.at(-1)).toBe(CONTAINER_ID);
   });
 
   it("captures screenshots through Cua Driver and validates the returned image", async () => {

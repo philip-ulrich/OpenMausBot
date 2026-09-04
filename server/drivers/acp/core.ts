@@ -373,6 +373,15 @@ export function createAcpDriver(support: AcpSupport): ProviderDriver<AcpConfig> 
             env: acpEnv(local.env ?? {}),
           });
         }
+        const workspace = turn.integrations?.workspace;
+        if (workspace) {
+          servers.push({
+            name: "workspace",
+            command: workspace.command,
+            args: workspace.args,
+            env: acpEnv(workspace.env),
+          });
+        }
         // user-configured servers, after the built-ins: a residual name
         // collision keeps the built-in (reserved names are filtered at the
         // config boundary; this is defense in depth).

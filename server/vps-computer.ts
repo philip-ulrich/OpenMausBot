@@ -944,6 +944,27 @@ export function vpsComputerMcp(cfg: AppConfig, botId: string, containerRef?: str
   };
 }
 
+/** A separate MCP process gives coding agents direct shell/file access to the
+ * same per-bot container as Cua. Keeping it separate preserves the official
+ * Cua tool surface and makes this feature independently removable. */
+export function vpsWorkspaceMcp(cfg: AppConfig, botId: string, containerRef?: string): {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+} {
+  const alias = vpsSshAlias(cfg);
+  if (!alias) throw new Error("VPS is not configured — add an SSH config alias first");
+  const container = containerRef ?? vpsContainerName(botId);
+  if (!CONTAINER_NAME.test(container) && !CONTAINER_ID.test(container)) {
+    throw new Error("invalid VPS workspace connection");
+  }
+  return {
+    command: process.execPath,
+    args: [SPAWNED_PROXIES.vpsWorkspaceMcp, alias, container],
+    env: { ELECTRON_RUN_AS_NODE: "1" },
+  };
+}
+
 export function vpsDriverError(driverKind: string, computerMcp: boolean): string | null {
   if (driverKind === "boxAgent") {
     return "The Computer engine runs its agent on Box and cannot use a self-hosted VPS — choose Claude or an ACP engine";

@@ -24,6 +24,7 @@ const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RESERVED_MCP_NAMES = new Set([
   "ogb",
   "computer",
+  "workspace",
   "agents",
   "composio",
   "browser",

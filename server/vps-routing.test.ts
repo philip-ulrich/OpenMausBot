@@ -1,7 +1,7 @@
 // Turn routing for the BYO-VPS backend, end to end on the real harness
 // server: a bot patched to cloudBackend:"vps" must get the managed container
-// mounted as its computer (integrations.localComputer → the "computer" MCP
-// server), carry the VPS system-prompt clause, never provision from Auto,
+// mounted as its computer plus direct coding workspace, carry the VPS
+// system-prompt clause, never provision from Auto,
 // and hold/clear its activeVpsThreads claim across the turn.
 //
 // The "injected VpsCommandRunner" is a fake `docker` executable on
@@ -264,6 +264,7 @@ posixOnly("VPS turn routing e2e (fake ACP fleet + fake docker over SSH)", () => 
       const echo = snapshot.messages.find((m: any) => m.kind === "text" && m.text?.startsWith("echo: ")).text;
       // the VPS clause, including the disposable-filesystem warning
       expect(echo).toContain("self-hosted remote Linux computer");
+      expect(echo).toContain("use the workspace tools for direct shell commands");
       expect(echo).toContain("wiped whenever its container is recreated");
 
       // the official Cua MCP server was mounted through the VPS bridge
@@ -280,6 +281,11 @@ posixOnly("VPS turn routing e2e (fake ACP fleet + fake docker over SSH)", () => 
       expect(bridgeArgs.some((a) => a.includes("vps-container-mcp"))).toBe(true);
       expect(bridgeArgs.includes("production-vps")).toBe(true);
       expect(bridgeArgs.includes(CONTAINER_ID)).toBe(true);
+      const workspace = mcpServers.find((s) => s.name === "workspace");
+      expect(workspace, "no workspace MCP server reached the agent").toBeTruthy();
+      expect(workspace?.args?.some((a) => a.includes("vps-workspace-mcp"))).toBe(true);
+      expect(workspace?.args).toContain("production-vps");
+      expect(workspace?.args).toContain(CONTAINER_ID);
 
       // Auto attached to the existing container and NEVER provisioned: every
       // docker-over-SSH invocation is an inspection or an exec. (The Local VM

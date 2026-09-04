@@ -3187,6 +3187,15 @@ async function startTurn(
               ...vpsMcp,
               env: { ...vpsMcp.env, OMB_CONTROL_URL: vpsControl.url, OMB_CONTROL_TOKEN: vpsControl.token },
             };
+            const workspaceMcp = vps.vpsWorkspaceMcp(targetCfg, bot.id, remote.container_id ?? undefined);
+            integrations.workspace = {
+              ...workspaceMcp,
+              env: {
+                ...workspaceMcp.env,
+                OMB_CONTROL_URL: vpsControl.url,
+                OMB_CONTROL_TOKEN: vpsControl.token,
+              },
+            };
             computerKind = "vps";
             previewCapture = () => vps.vpsComputerScreenshot(targetCfg, bot.id);
           } else {
@@ -3380,7 +3389,7 @@ async function startTurn(
             : computerKind === "box" && instance.driverKind !== "boxAgent"
             ? " You have your own cloud computer. In Chrome, prefer browser_snapshot with browser_click/browser_fill for semantic, trusted actions; use screenshot/click/type_text for visual or non-browser UI, open_url for navigation, and computer_exec for Linux tasks. Every action already returns the resulting screen, so don't follow it with screenshot; batch predictable pixel actions with computer_batch."
             : computerKind === "vps"
-              ? " You have your own self-hosted remote Linux computer through the official Cua tools. Its filesystem is disposable: everything on it is wiped whenever its container is recreated, so keep long-lived work somewhere durable — push it to a remote, or hand the results back in chat — instead of leaving it only on that computer. Inspect the desktop state before acting, prefer accessibility targets over raw coordinates, and act carefully."
+              ? " You have your own self-hosted remote Linux computer through the official Cua tools. For coding, use the workspace tools for direct shell commands, precise file reads/writes and patches, and opening work in the visible VS Code session; do not type code or terminal commands through desktop pixels unless direct tools cannot do the job. Commands default to /home/cua/workspace. Its filesystem is disposable: everything on it is wiped whenever its container is recreated, so keep long-lived work somewhere durable — push it to a remote, or hand the results back in chat — instead of leaving it only on that computer. Inspect the desktop state before GUI actions, prefer accessibility targets over raw coordinates, and act carefully."
               : computerKind === "local"
               ? " You can act on the user's computer through the computer tools — take a screenshot or read the desktop state first, prefer accessibility actions over raw coordinates, and act carefully."
               : "") +

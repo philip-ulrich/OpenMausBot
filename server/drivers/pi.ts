@@ -85,6 +85,7 @@ export function buildMcpServers(turn: SendTurnInput): Record<string, unknown> | 
       ...(local.scope ? { scope: local.scope } : {}),
     };
   }
+  if (turn.integrations?.workspace) servers.workspace = { ...turn.integrations.workspace };
   if (turn.integrations?.agents) servers.agents = { ...turn.integrations.agents };
   if (turn.integrations?.phone) servers.phone = { ...turn.integrations.phone };
   if (turn.integrations?.dweb) {

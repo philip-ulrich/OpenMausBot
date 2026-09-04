@@ -246,6 +246,24 @@ describe("CodexDriver turns (fake app-server)", () => {
     expect(argv).not.toContain('mcp_servers.notes.default_tools_approval_mode');
   });
 
+  it("pre-approves the harness-owned VPS workspace MCP", async () => {
+    await create();
+    const dump = join(scratch, "workspace-mcp.json");
+    process.env.FAKE_CODEX_DUMP = dump;
+
+    await instance.adapter.sendTurn({
+      threadId: "t-workspace-mcp",
+      text: "edit the project",
+      integrations: {
+        workspace: { command: process.execPath, args: ["/tmp/vps-workspace-mcp.js", "vps", "container"], env: {} },
+      },
+    });
+    await recorder.until((event) => event.type === "turn.completed");
+    const argv = JSON.parse(readFileSync(dump, "utf8")).argv.join(" ");
+    expect(argv).toContain("mcp_servers.workspace.command");
+    expect(argv).toContain("mcp_servers.workspace.default_tools_approval_mode");
+  });
+
   it("mounts peer-agent comms without placing the comms token in argv", async () => {
     await create();
     const dump = join(scratch, "agents.json");

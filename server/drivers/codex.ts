@@ -182,6 +182,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
           // Driver stdio MCP server. Codex sees the same computer tool surface.
           mountMcpServer(appServerArgs, env, "computer", turn.integrations.localComputer);
         }
+        if (turn.integrations?.workspace) {
+          mountMcpServer(appServerArgs, env, "workspace", turn.integrations.workspace);
+        }
         if (turn.integrations?.browser) {
           mountMcpServer(appServerArgs, env, "browser", turn.integrations.browser);
         }

@@ -190,6 +190,10 @@ export interface SendTurnInput {
       generation?: string;
       scope?: "local-computer";
     };
+    /** Coding tools routed into the same isolated VPS container as
+     * `localComputer`. Unlike a user-configured MCP this is harness-owned,
+     * per-bot, and safe to pre-allow because it cannot reach the host. */
+    workspace?: { command: string; args: string[]; env: Record<string, string> };
     /** Peer-agent comms: an MCP proxy (list_bots / ask_bot) that routes back
      * through the harness so this bot can message other bots. The harness
      * owns turns, permissions, and recursion limits; the proxy only forwards. */

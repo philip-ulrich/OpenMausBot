@@ -704,6 +704,10 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
         // Host tools always route through OpenMausBot's permission broker.
         if (!controlsHost) allowed.push("mcp__computer");
       }
+      if (turn.integrations?.workspace) {
+        mcpServers.workspace = { ...turn.integrations.workspace };
+        allowed.push("mcp__workspace");
+      }
       // peer-agent comms (list_bots/ask_bot) — the harness builds the whole
       // spawn contract (command/args/env incl. the boot token) in
       // agentsIntegration(); pre-allowing matters doubly here, or the CLI's

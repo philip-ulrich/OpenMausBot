@@ -492,6 +492,24 @@ describe("ClaudeDriver turns (fake CLI)", () => {
     expect(JSON.stringify(seen.argv)).not.toContain("tok-notes");
   });
 
+  it("pre-allows the harness-owned VPS workspace MCP", async () => {
+    await create();
+    const dump = join(scratch, "workspace-mcp.json");
+    process.env.FAKE_CLAUDE_DUMP = dump;
+
+    await instance.adapter.sendTurn({
+      threadId: "t-workspace-mcp",
+      text: "edit the project",
+      integrations: {
+        workspace: { command: process.execPath, args: ["/tmp/vps-workspace-mcp.js", "vps", "container"], env: {} },
+      },
+    });
+    await recorder.until((event) => event.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.mcpConfig.mcpServers.workspace.args).toContain("/tmp/vps-workspace-mcp.js");
+    expect(seen.argv[seen.argv.indexOf("--allowedTools") + 1]).toContain("mcp__workspace");
+  });
+
   it("passes normalized available and denied built-in tool sets to Claude", async () => {
     await create(undefined, {}, {
       tools: ["Read", "WebFetch"],

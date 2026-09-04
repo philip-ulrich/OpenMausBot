@@ -520,6 +520,27 @@ describe("ACP turns (fake CLI)", () => {
     expect(instance.adapter.capabilities.customMcp).toBe(true);
   });
 
+  it("mounts the harness-owned VPS workspace MCP", async () => {
+    await create();
+    const dump = join(scratch, "workspace-dump.json");
+    process.env.FAKE_ACP_DUMP = dump;
+    await instance.adapter.sendTurn({
+      threadId: "t-workspace-mcp",
+      text: "edit the project",
+      integrations: {
+        workspace: { command: process.execPath, args: ["/tmp/vps-workspace-mcp.js", "vps", "container"], env: { X: "1" } },
+      },
+    });
+    await recorder.until((event) => event.type === "turn.completed");
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.mcpServers).toContainEqual({
+      name: "workspace",
+      command: process.execPath,
+      args: ["/tmp/vps-workspace-mcp.js", "vps", "container"],
+      env: [{ name: "X", value: "1" }],
+    });
+  });
+
   it("surfaces a permission ask as request.opened and completes once allowed", async () => {
     await create(GrokAgentDriver, "permission");
     await instance.adapter.sendTurn({
